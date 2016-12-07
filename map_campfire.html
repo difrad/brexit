@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8">
+    <title>Chord Ratio Diagram</title>
+    <script type="text/javascript" src="d3.v2.min.js"></script>
+    <script src="utils.js"></script>
+    <style type="text/css">
+        body {
+            font: 12px sans-serif;
+            overflow:hidden;
+            padding:0;
+            margin:0;
+            background-color: black;
+        }
+        svgdiv {
+            width: 100%;
+            height: 100%;
+        }
+        svg {
+            max-height: 100%;
+        }
+        #map {
+        height: 100%;
+      }
+        center {
+        	padding:0;
+        	margin:0;
+        }
+    </style>
+    
+    
+    <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+	<script src="map/libs/jquery-1.10.1.js"></script>
+	<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+	<script src="http://d3js.org/d3.v3.js" charset="utf-8"></script>
+	
+  </head>
+  <body>
+   <div id="map"></div>
+<script type="text/javascript">
+
+var gui = require('nw.gui');
+var win = gui.Window.get();
+
+win.width = 500;
+win.height = 500;
+
+mom = window.opener;
+node_mom = gui.Window.get(mom); // wow
+
+win.toggleFullscreen();
+
+win.on("close", function(){
+    mom.appKill();
+})
+
+var o = {
+    key : "F2",
+    active : function(){
+        console.log("yeah");
+        win.toggleFullscreen();
+        //setTimeout(function(){ doEverything(); }, 500);
+    },
+    failed : function(msg) {
+        console.log(msg);
+    }
+}
+var shortcut = new gui.Shortcut(o);
+gui.App.registerGlobalHotKey(shortcut);
+
+
+document.body.addEventListener("keydown", function keyfunc(e){
+    if (e.keyCode == 123){ //F12
+        win.showDevTools();
+    }
+});
+
+wedunit=false;
+////////////////
+var map, heatmapPos, liveTweetsPos;
+	  var timeseries = [];
+	  var cities = [];
+	  var city = {};
+	  var city_index=0;
+	  
+	  //london
+	  cities[0] = {};
+	  cities[0].lat = 51.50;
+	  cities[0].lng = -0.1371;
+	  cities[0].zoom = 12;
+	  //southampton
+	  cities[1] = {};
+	  cities[1].lat = 50.92546;
+	  cities[1].lng =  -1.418;
+	  cities[1].zoom = 13;
+	  //Manchester
+	  cities[2] = {};
+	  cities[2].lat = 53.4789;
+	  cities[2].lng =  -2.26372;
+	  cities[2].zoom = 13;
+	  cities.push(city);
+	  //Edin
+	  cities[3] = {};
+	  cities[3].lat =  55.939;
+	  cities[3].lng =  -3.2124977;
+	  cities[3].zoom = 13;
+	  cities.push(city);
+	  //Belfast
+	  cities[4] = {};
+	  cities[4].lat =  54.607139;
+	  cities[4].lng =  -5.971096;
+	  cities[4].zoom = 12;
+	  	  
+	  //var socket3 = io.connect('http://localhost:3700');
+	  var socket3 = io.connect('http://sociamvm-app-001.ecs.soton.ac.uk:3700');
+      //socket3.emit("load_data",""); http://localhost
+	  
+	  function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+          zoom: 6,
+          center: {lat: 54.210389740694644, lng: -6.12},
+          mapTypeId: google.maps.MapTypeId.ROADMAP
+        });
+        
+        //var liveTweetsPos = new google.maps.MVCArray();
+		/*
+        heatmap = new google.maps.visualization.HeatmapLayer({
+          data: getPoints(),
+          map: map
+        }); */
+        
+
+  	var liveTweetsPos = new google.maps.MVCArray();
+  	
+    heatmapPos = new google.maps.visualization.HeatmapLayer({
+    	data: liveTweetsPos,
+    	radius: 15
+  	});
+    
+
+    var gradient = [
+    'rgba(0, 255, 255, 0)',
+    'rgba(0, 255, 255, 1)',
+    'rgba(0, 191, 255, 1)',
+    'rgba(0, 127, 255, 1)',
+    'rgba(0, 63, 255, 1)',
+    'rgba(0, 0, 255, 1)',
+    'rgba(0, 0, 223, 1)',
+    'rgba(0, 0, 191, 1)',
+    'rgba(0, 0, 159, 1)',
+    'rgba(0, 0, 127, 1)',
+    'rgba(63, 0, 91, 1)',
+    'rgba(127, 0, 63, 1)',
+    'rgba(191, 0, 31, 1)',
+    'rgba(255, 0, 0, 1)'
+  ]
+  
+  heatmapPos.set('gradient', heatmapPos.get('gradient') ? null : gradient);
+  heatmapPos.setMap(map);
+  
+  $.getJSON( "geohistory.json", function( json ) {
+  
+    for(var i=0; i<json.length; i++) {
+ 		var data = json[i];
+ 			
+        if(data.geo != undefined){  
+          var lat =   data.geo.coordinates[0];
+          var lng =   data.geo.coordinates[1];
+             console.log("LAT and LONG",lat,lng);
+          //console.log(lat,lng)
+          var tweetLocation = new google.maps.LatLng(lat, lng);
+          liveTweetsPos.push({location: tweetLocation, weight: 15});       
+        } 
+        }
+    });
+    
+    
+   map.addListener('idle', function() {
+   
+    var bounds = map.getBounds();
+    var center = bounds.getCenter();
+    var ne = bounds.getNorthEast();
+    var zoom = map.getZoom();
+    var twitD = {};
+
+    // r = radius of the earth in statute miles
+    var r = 3963.0;
+
+    // Convert lat or lng from decimal degrees into radians (divide by 57.2958)
+    var lat1 = center.lat() / 57.2958;
+    var lon1 = center.lng() / 57.2958;
+    var lat2 = ne.lat() / 57.2958;
+    var lon2 = ne.lng() / 57.2958;
+
+    // distance = circle radius from center to Northeast corner of bounds
+    var dis = r * Math.acos(Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1));
+    
+    //collect maps's new center lat/long and radius and send to server
+    twitD.lat = center.lat();
+    twitD.lng = center.lng() ;
+    twitD.dis = dis;
+    console.log("Bound changed", bounds);
+    console.log("zoom", zoom);
+    console.log("center lat", center.lat());
+    console.log("center long", center.lng());
+    
+    socket3.emit("update_dis",twitD);
+   
+   });//allListener
+   
+   document.body.addEventListener("keydown", function keyfunc(e){
+    if (e.keyCode == 39){ //right arrow
+        console.log("#### start right arrow city_index####",city_index);
+        if(city_index>=cities.length)
+        {
+            city_index = 0;
+        }
+        if(city_index<0)
+        {
+            city_index = (4);
+        }
+        
+        map.setZoom(cities[city_index].zoom);      // This will trigger a zoom_changed on the map
+        map.setCenter(new google.maps.LatLng(cities[city_index].lat, cities[city_index].lng));
+        city_index++;
+        console.log("#### after right arrow city_index####",city_index);
+    }
+    
+    else if (e.keyCode == 37){ //left arrow
+    console.log("#### before left arrow city_index####",city_index);
+        if(city_index<0)
+        {
+            city_index = (4);
+        }
+        if(city_index>=cities.length)
+        {
+            city_index = 0;
+        }
+        
+        map.setZoom(cities[city_index].zoom);      // This will trigger a zoom_changed on the map
+        map.setCenter(new google.maps.LatLng(cities[city_index].lat, cities[city_index].lng));
+        city_index--;
+        console.log("#### after left arrow city_index####",city_index);
+    }
+    
+    else if (e.keyCode == 38){ //up arrow
+       map.setZoom(6);      // This will trigger a zoom_changed on the map
+       map.setCenter(new google.maps.LatLng(54.210389740694644, -6.12));
+        
+    }
+    });
+  
+  
+  /////////SOCKET START
+  socket3.on('tweets', function (tweets) {
+
+  console.log("####tweets####", tweets["statuses"].length);
+  console.log("####Meta##", tweets["search_metadata"]);
+  //var timestamp_dist = {};
+	//var data = JSON.parse(databaseDump);
+ 	/*for(var i=0; i<databaseDump.length; i++) {
+       
+      tweetsAll = tweetsAll + 1; 
+      //counters["tweetsAll"] = tweetsAll;
+      var data = JSON.parse(databaseDump[i].status);
+
+
+      var timestamp = data.timestamp;
+      timestamp = timestamp.split(":")[0]+":"+timestamp.split(":")[1]+":00";
+     // console.log(timestamp)
+
+      if(timestamp in timestamp_dist){
+      		var cnt = timestamp_dist[timestamp];
+      		timestamp_dist[timestamp] =cnt + 1
+      }else{
+      		timestamp_dist[timestamp] = 1
+      }*/
+      
+      for(var i=0; i<tweets["statuses"].length; i++) {
+ 			var data = tweets["statuses"][i];
+ 			
+        if(data.geo != undefined){  
+          var lat =   data.geo.coordinates[0];
+          var lng =   data.geo.coordinates[1];
+             console.log("LAT and LONG",lat,lng);
+          //console.log(lat,lng)
+          var tweetLocation = new google.maps.LatLng(lat, lng);
+          liveTweetsPos.push({location: tweetLocation, weight: 15});       
+        } 
+        }
+
+        //addSouthamptonTwitterData(data);
+        //updateCounters(counters);
+		
+    });//socket3        
+}//initMap
+    </script>
+        <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDhm1qNyoXWr4sVC7_hnTD4T4yYdIMBNsM&libraries=visualization&callback=initMap">
+    </script>  
+  </body>
+</html>

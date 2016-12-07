@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+html,body{
+  overflow:hidden;
+  padding:0;
+  margin:0;
+  background-color: black;
+}
+
+.svg-container {
+    display: inline-block;
+    position: relative;
+    width: 100%;
+    padding-bottom: 100%; /* aspect ratio */
+    vertical-align: top;
+    overflow: hidden;
+}
+.svg-content-responsive {
+    display: inline-block;
+    position: absolute;
+    top: 10px;
+    left: 0;
+}
+.free-wall {
+      		margin: 15px;
+			}
+			.brick {
+				width: 200px;
+				margin: 0px;
+				padding: 0px;
+				display: block;
+			}
+			.info {
+				padding: 15px;
+				color: #333;
+			}
+      #staytweet {position:absolute;left:0;width:2500px;top:25px;}
+      #leavetweet {position:absolute;right:0;width:2500px;top:25px;}
+       #stayhead {position:absolute;left:2500px;top:0;}
+      #leavehead {position:absolute;right:2500px;top:0;}
+
+.node {
+  cursor: pointer;
+}
+
+.node:hover {
+  stroke: #000;
+  stroke-width: 1.5px;
+}
+
+      rect.cell-hover {
+        stroke: #000;
+        stroke-width:1px;
+      }
+
+.node--leaf {
+  fill: white;
+}
+
+.label {
+  font: 11px "Helvetica Neue", Helvetica, Arial, sans-serif;
+  text-anchor: middle;
+  text-shadow: 0 1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff, 0 -1px 0 #fff;
+}
+
+.label,
+.node--root,
+.node--leaf {
+  pointer-events: none;
+}
+
+</style>
+
+    <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+	<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
+	<script src="js/freewall.js" type="text/javascript"></script>
+    <script>window.twttr = (function(d, s, id) {
+  		var js, fjs = d.getElementsByTagName(s)[0],
+    	t = window.twttr || {};
+  		if (d.getElementById(id)) return t;
+  		js = d.createElement(s);
+  		js.id = id;
+  		js.src = "https://platform.twitter.com/widgets.js";
+  		fjs.parentNode.insertBefore(js, fjs);
+ 
+  		t._e = [];
+  		t.ready = function(f) {
+    	t._e.push(f);
+  		};
+ 
+  		return t;
+		}(document, "script", "twitter-wjs"));
+	</script>
+<body>
+
+<script>
+
+var gui = require('nw.gui');
+var win = gui.Window.get();// open the other window
+
+document.body.addEventListener("keydown", function keyfunc(e){
+    if (e.keyCode == 123){ //F12
+        win.showDevTools();
+    }
+});
+
+
+// default width and height for the floor window.
+// the window is resizable, but it is handy to give it a
+// starting point so it looks right for debugging, etc.
+win.width = 1280;
+win.height = 720;
+
+ww = window.open("map_campfire.html");
+nww = gui.Window.get(ww); // get the node window object of the other window
+
+
+gui.Screen.Init();
+numscreens = gui.Screen.screens.length;
+
+win.on("close", function(){
+    appKill();
+})
+
+var o = {
+    key : "F1",
+    active : function(){
+        console.log("yeah");
+        win.toggleFullscreen();
+    },
+    failed : function(msg) {
+        console.log(msg);
+    }
+}
+var shortcut = new gui.Shortcut(o);
+gui.App.registerGlobalHotKey(shortcut);
+
+function appKill(){
+    nww.close(true); // close the other window
+    win.close(true); // actually close
+}
+
+nww.on("loaded", function(){
+if (numscreens > 1){ // we only want to bother with this routine if there is more than one screen
+    for (var i = 0; i < numscreens; i++){
+        var aspect = gui.Screen.screens[i]["bounds"]["height"]/gui.Screen.screens[i]["bounds"]["width"];
+        var sx = gui.Screen.screens[i]["bounds"]["x"];
+        var sy = gui.Screen.screens[i]["bounds"]["y"];
+        if (aspect < 0.5){
+            console.log("panoscreen Found (?) :");
+            console.log(gui.Screen.screens[i]);
+            // so now we're pretty sure we found the panoramic screen,
+            // and we need to know where to put the other one.
+            if(numscreens == 2){ // if there are only 2 screens, we want the floor on the one that isn't the panoramic screen.
+                nww.moveTo(gui.Screen.screens[1-i]["bounds"]["x"], gui.Screen.screens[1-i]["bounds"]["y"]);
+                win.moveTo(sx, sy);
+                win.enterFullscreen()
+                nww.enterFullscreen();
+		setTimeout(function(){
+		    ww.doEverything();
+		}, 200);
+                console.log("moved to panoscreen (?)");
+            }
+        }
+    }
+}
+});
+
+
+</script>
+
+<script>
+  var total_height = 800;
+  var total_width = 6400;
+  
+  
+   
+   //////my code below
+   
+    var margin = {top: 0, right: 0, bottom: 0, left: 0},
+    width = 6400 - margin.left - margin.right,
+    height = 800 - margin.top - margin.bottom;
+    
+var y = d3.scale.ordinal()
+    .rangeRoundBands([height, 0]);
+
+var x = d3.scale.linear()
+    .rangeRound([0, width]);
+
+var color = d3.scale.ordinal()
+    .range(["#CF142B", "#ffffff", "#000099"]);
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .orient("left");
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickFormat(d3.format(".2s"));
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .attr("viewBox", "0 85 " + width + " " + height )
+    .attr("preserveAspectRatio", "xMinYMin meet")
+  .append("g");
+
+d3.json("data.json", function(error, data) {
+  if (error) throw error;
+  
+  data = data.smoothedData;
+  
+ /* data.forEach(function(d) {
+    d.date = new Date(d.date);
+  });
+  */
+  
+  //color.domain(d3.keys(data[0]).filter(function(key) { return key !== "date"; }));
+  color.domain(["remain", "undecided", "leave"]);
+	//color.domain(d3.keys(data[0]).filter(function(key) { return ((key !== "date") && (key !== "method") && (key !== "pollOfPolls")); }));
+  data.forEach(function(d) {
+    var y0 = 0;
+    d.votes = color.domain().map(function(name) { return {name: name, y0: y0, y1: y0 += +d[name]}; });
+    d.total = d.votes[d.votes.length - 1].y1;
+  });
+
+  //data.sort(function(a, b) { return b.total - a.total; });
+  //var testY = d3.extent(data, function(d) { return d.date; });
+  //y.domain(d3.extent(data, function(d) { return d.date; }));
+   y.domain(data.map(function(d) { return d.date; }));
+
+
+  x.domain([0, 100]);
+
+  /*svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis);
+*/
+  
+  var testdate = data[0].date;
+  var test = y(data[0].date);
+
+  var state = svg.selectAll(".state")
+      .data(data)
+      .enter().append("g")
+      .attr("class", "g")
+      .attr("transform", function(d) { return "translate(0," + y(d.date) + ")"; });
+
+  var testYYYY = width/data.length;
+
+  state.selectAll("rect")
+      .data(function(d) { return d.votes; })
+      .enter().append("rect")
+      .attr("height", height/data.length)
+      .attr("x", function(d) { return x(d.y0); })
+      .attr("width", function(d) { return x(d.y1) - x(d.y0); })
+      .style("fill", function(d) { return color(d.name); });
+
+  svg.append("svg:line")          // attach a line
+    .style("stroke", "black")  // colour the line
+    .style("stroke-width", "5")  // colour the line
+    .attr("x1", 3200)     // x position of the first end of the line
+    .attr("y1", 0)      // y position of the first end of the line
+    .attr("x2", 3200)     // x position of the second end of the line
+    .attr("y2", 900); 
+
+}); 
+</script>
+
+<div id="stayhead"><H1><strong>#Stay</strong></H1></div>
+<div id="staytweet" class="free-wall">
+	  
+</div>
+
+<div id="leavehead"><H1><strong>#Leave</strong></H1></div>
+<div id="leavetweet" class="free-wall">
+</div>
+
+
+<script>
+
+      // This example requires the Visualization library. Include the libraries=visualization
+      // parameter when you first load the API. For example:
+       //<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDhm1qNyoXWr4sVC7_hnTD4T4yYdIMBNsM&libraries=visualization">
+
+	  //var map, heatmapPos, liveTweetsPos;
+	  //var timeseries = [];
+	  
+	  //var socket = io.connect('http://localhost:3700');
+	var socket = io.connect('http://sociamvm-app-001.ecs.soton.ac.uk:3700');
+    socket.emit("load_data","");
+    
+    console.log("testing if we load data");
+    
+
+      
+	socket.on('stay-tweets', function (tweets) {
+		console.log("@@@@@@@@@stay-tweets");
+		console.log("####STAY Meta##", tweets["search_metadata"]);
+        //staytweet
+        $("#staytweet").empty();
+        $( "#staytweet" ).append( "<H2><strong>#Stay</strong></H2>" );
+ 		for(var i=0; i<15; i++) {
+ 			//var data = JSON.parse(tweets["statuses"][i]);
+ 			var data = tweets["statuses"][i];
+ 			//$("#tweet"+i).empty();
+ 			$( "#staytweet" ).append( '<div class="brick" id="tweet'+i+'"></div>');
+ 			twttr.widgets.createTweet(
+  				data.id_str,
+  				document.getElementById('tweet'+i),
+  				{
+    				align: 'left',
+    				width: 80,
+                    height: '400px',
+  				})
+  				.then(function (el) {
+    				console.log("@ev's Stay Tweet has been displayed.");
+    				
+    				var wall = new Freewall("#staytweet");
+    				//wall.fitWidth();
+    				
+			        wall.reset({
+				    selector: '.brick',
+				    animate: true,
+				    cellW: 200,
+				    cellH: 'auto',
+				    onResize: function() {
+					    wall.fitWidth(); 
+				    }
+			        });
+			        $(window).trigger("resize");
+  				});
+ 		
+ 		}
+ 		
+ 		twttr.widgets.load(
+  			document.getElementById("staytweet")
+  			
+		);
+ 		
+ 	});///socket stay
+ 	
+ 	
+ 	socket.on('leave-tweets', function (tweets) {
+		console.log("########leave-data");
+         $("#leavetweet").empty();
+        $( "#leavetweet" ).append( "<H2><strong>#Leave</strong></H2>" );
+ 		for(var i=0; i<15; i++) {
+ 			var data = tweets["statuses"][i];
+ 			//$("#Ltweet"+i).empty();
+ 			$( "#leavetweet" ).append( '<div class="brick" id="Ltweet'+i+'"></div>' );
+ 			//console.log("leave-data:", data);
+ 			twttr.widgets.createTweet(
+  				data.id_str,
+  				document.getElementById('Ltweet'+i),
+  				{
+    				align: 'left',
+    				width: 100,
+                    height: '400px',
+  				})
+  				.then(function (el) {
+    				console.log("@ev's Leave Tweet has been displayed.");
+    				
+    				var wall = new Freewall("#leavetweet");
+			        wall.reset({
+				    selector: '.brick',
+				    animate: true,
+				    cellW: 200,
+				    cellH: 'auto',
+				    onResize: function() {
+					    wall.fitWidth();
+				    }
+			    });
+			    $(window).trigger("resize");
+  				});
+ 		
+ 		}
+ 		
+ 		twttr.widgets.load(
+  			document.getElementById("leavetweet")
+  			
+		);
+ 		
+ 	});
+</script>
+
+</body>
